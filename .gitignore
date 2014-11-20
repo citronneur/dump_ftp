@@ -1,0 +1,11 @@
+*.pyc
+.project
+.pydevproject
+README.md~
+rdpy/core/tmp/*
+*.so
+*.os
+.sconsign.dblite
+build/*
+dist/*
+dump_ftp.egg-info/*
