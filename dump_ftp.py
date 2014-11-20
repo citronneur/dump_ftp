@@ -153,7 +153,7 @@ class Dumper(object):
                 if not fnmatch.fnmatch(name, self.filter):
                     print "ignored by filter %s" % name
                     continue
-					
+                
                 targetFile = os.path.join(targetDir, name)
                 print "download %s"%targetFile
                 mkdirs(os.path.dirname(targetFile))
@@ -188,8 +188,8 @@ if __name__ == '__main__':
     
     #target dump dir
     targetDir = '/tmp'
-	
-	#filter on file name
+    
+    #filter on file name
     filter = "*"
     
     try:
