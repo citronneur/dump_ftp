@@ -21,7 +21,7 @@
 Dump ftp directory
 """
 
-import sys, os, getopt, ssl, socket, re, errno, sha
+import sys, os, getopt, ssl, socket, re, errno, sha, fnmatch
 from ftplib import FTP, FTP_TLS, error_perm
 
 class FTP_TLS_EXPLICIT(FTP_TLS):
@@ -121,17 +121,20 @@ class Dumper(object):
     """
     @summary: recursive dump context
     """
-    def __init__(self, client, createEmptyDir):
+    def __init__(self, client, createEmptyDir, filter):
         """
         @param client: ftplib client
         @param createEmptyDir: create empty directories
+		@param filter: unix like filter on file name
         """
         self.client = client
         self.createEmptyDir = createEmptyDir
+        self.filter = filter
         
     def do(self, targetDir):
         """
-        @summary: Dump curentDir into targetDir
+        @summary: Dump targetDir
+		@param: target dir
         """
         for date, info, name in listCommandMSDOS(self.client):
             if info == '<DIR>':
@@ -145,13 +148,20 @@ class Dumper(object):
                     self.do(newTargetDir)
                     self.client.cwd('..')
                 except error_perm:
-                    print "unable to access directory %s"%name
+                    print "\nERROR : unable to access directory %s\n"%(os.path.join(self.client.pwd(), name))
             else:
+                if not fnmatch.fnmatch(name, self.filter):
+                    print "ignored by filter %s" % name
+                    continue
+					
                 targetFile = os.path.join(targetDir, name)
                 print "download %s"%targetFile
                 mkdirs(os.path.dirname(targetFile))
                 
-                self.client.retrbinary('RETR %s'%name, Downloader(open(targetFile, 'wb'), int(info)).receive)
+                try:
+                    self.client.retrbinary('RETR %s'%name, Downloader(open(targetFile, 'wb'), int(info)).receive)
+                except error_perm:
+                    print "\nERROR : unable to access file %s\n"%(os.path.join(self.client.pwd(), name))
 
 def help():
     print "Usage: dump_ftp.py [options] host[:port]"
@@ -159,7 +169,8 @@ def help():
     print "\t-p: password [default : anonymous@]"
     print "\t-d: target directory [default : /tmp]"
     print "\t-s: enable ssl [default : False]"
-    print "\t-e: create empty directory [default : False]"               
+    print "\t-e: create empty directory [default : False]"  
+    print "\t-f: unix like filter for file name [default : *]"
 
 if __name__ == '__main__':
     
@@ -177,9 +188,12 @@ if __name__ == '__main__':
     
     #target dump dir
     targetDir = '/tmp'
+	
+	#filter on file name
+    filter = "*"
     
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hesu:p:d:")
+        opts, args = getopt.getopt(sys.argv[1:], "hesu:p:d:f:")
     except getopt.GetoptError:
         help()
     for opt, arg in opts:
@@ -194,6 +208,8 @@ if __name__ == '__main__':
             password = arg
         if opt == "-d":
             targetDir = arg
+        if opt == "-f":
+            filter = arg
         if opt == "-e":
             createEmptyDirectory = True
             
@@ -221,6 +237,6 @@ if __name__ == '__main__':
     
     #log
     client.login(username, password)
-    Dumper(client, createEmptyDirectory).do(targetDir)
-            
+    Dumper(client, createEmptyDirectory, filter).do(targetDir)
+    client.quit()	
     
