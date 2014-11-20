@@ -79,7 +79,7 @@ class Downloader(object):
         #compute download state
         state = int(float(self.receiveSize)/float(self.size) * 100.0)
         
-        sys.stdout.write("% 4d%%[%s]" % (state, ("=" * (state) + " " * (100 - state))))
+        sys.stdout.write("% 4d%%[%s]" % (state, ("=" * (state / 10) + " " * (10 - state / 10))))
         if self.receiveSize != self.size:
             sys.stdout.write("\r")
         else:
