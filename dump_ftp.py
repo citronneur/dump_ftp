@@ -21,7 +21,7 @@
 Dump ftp directory
 """
 
-import sys, os, getopt, ssl, socket, re, errno, sha, fnmatch
+import sys, os, getopt, ssl, socket, re, errno, sha, fnmatch, shutil
 from ftplib import FTP, FTP_TLS, error_perm
 
 class FTP_TLS_EXPLICIT(FTP_TLS):
@@ -49,7 +49,7 @@ class FTP_TLS_EXPLICIT(FTP_TLS):
         self.welcome = self.getresp()
         return self.welcome
     
-class Downloader(object):
+class FileDownloader(object):
     """
     @summary: Download ftp file
     """
@@ -86,25 +86,21 @@ class Downloader(object):
             sys.stdout.write(" (%s) \n"%self.sha.hexdigest())
         sys.stdout.flush()
         
-    
-def listCommandMSDOS(client):
-    """
-    @summary: return formated result of list command
-    @return: list(tuple(date, [<DIR> | fileSize], fileName)]
-    """
-    files = []
-    client.retrlines('LIST', files.append)
-    result = []
-    prog = re.compile('^(\d+\-\d+\-\d+\s+\d+:\d+(A|P)M)\s+(<DIR>|\d+)\s+(.*)$')
-    for f in files:
-        m = prog.match(f)
-        result.append((m.group(1), m.group(3), m.group(4)))
+class FolderParser(object):
+    def __init__(self):
+        self.sha = sha.new()
+        self.infos = []
+        self.msdos = re.compile('^(\d+\-\d+\-\d+\s+\d+:\d+(A|P)M)\s+(<DIR>|\d+)\s+(.*)$')
+    def receive(self, data):
+        #update fingerprint
+        self.sha.update(data)
+        m = self.msdos.match(data)
+        self.infos.append((m.group(1), m.group(3), m.group(4)))
         
-    return result
 
 def mkdirs(path):
     """
-    @summary: mkdis with existed folder exception handler
+    @summary: mkdirs with existed folder exception handler
     @param path: path to create
     """
     if os.path.isdir(path):
@@ -121,7 +117,7 @@ class Dumper(object):
     """
     @summary: recursive dump context
     """
-    def __init__(self, client, createEmptyDir, filter):
+    def __init__(self, client, createEmptyDir, filter, detectLink):
         """
         @param client: ftplib client
         @param createEmptyDir: create empty directories
@@ -130,13 +126,25 @@ class Dumper(object):
         self.client = client
         self.createEmptyDir = createEmptyDir
         self.filter = filter
+        self.detectLink = detectLink
+        self.folders = {}
         
     def do(self, targetDir):
         """
         @summary: Dump targetDir
 		@param: target dir
         """
-        for date, info, name in listCommandMSDOS(self.client):
+        folder = FolderParser()
+        self.client.retrlines('LIST', folder.receive)
+        srcDir = None
+        #try to detect same folders
+        shaFolder = folder.sha.hexdigest()
+        if self.folders.has_key(shaFolder) and self.detectLink:
+            srcDir = self.folders[shaFolder]
+        else:
+            self.folders[shaFolder] = targetDir
+        
+        for date, info, name in folder.infos:
             if info == '<DIR>':
                 try:
                     newTargetDir = os.path.join(targetDir, name)
@@ -151,15 +159,21 @@ class Dumper(object):
                     print "\nERROR : unable to access directory %s\n"%(os.path.join(self.client.pwd(), name))
             else:
                 if not fnmatch.fnmatch(name, self.filter):
-                    print "ignored by filter %s" % name
                     continue
                 
                 targetFile = os.path.join(targetDir, name)
-                print "download %s"%targetFile
+                
                 mkdirs(os.path.dirname(targetFile))
                 
+                if not srcDir is None and os.path.exists(os.path.join(srcDir, name)):
+                    srcFile = os.path.join(srcDir, name)
+                    print "copy %s -> %s"%(srcFile, targetFile)
+                    shutil.copy(srcFile, targetFile)
+                    continue
+                
+                print "download %s"%targetFile
                 try:
-                    self.client.retrbinary('RETR %s'%name, Downloader(open(targetFile, 'wb'), int(info)).receive)
+                    self.client.retrbinary('RETR %s'%name, FileDownloader(open(targetFile, 'wb'), int(info)).receive)
                 except error_perm:
                     print "\nERROR : unable to access file %s\n"%(os.path.join(self.client.pwd(), name))
 
@@ -171,6 +185,7 @@ def help():
     print "\t-s: enable ssl [default : False]"
     print "\t-e: create empty directory [default : False]"  
     print "\t-f: unix like filter for file name [default : *]"
+    print "\t-l: try to detect link folder [default : False]"
 
 if __name__ == '__main__':
     
@@ -192,8 +207,11 @@ if __name__ == '__main__':
     #filter on file name
     filter = "*"
     
+    #compute sha of list command and comprae to already visited folders
+    detectLink = False
+    
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hesu:p:d:f:")
+        opts, args = getopt.getopt(sys.argv[1:], "heslu:p:d:f:")
     except getopt.GetoptError:
         help()
     for opt, arg in opts:
@@ -212,6 +230,8 @@ if __name__ == '__main__':
             filter = arg
         if opt == "-e":
             createEmptyDirectory = True
+        if opt == "-l":
+            detectLink = True
             
     if ':' in args[0]:
         host, port = args[0].split(':')
@@ -237,6 +257,6 @@ if __name__ == '__main__':
     
     #log
     client.login(username, password)
-    Dumper(client, createEmptyDirectory, filter).do(targetDir)
+    Dumper(client, createEmptyDirectory, filter, detectLink).do(targetDir)
     client.quit()	
     
