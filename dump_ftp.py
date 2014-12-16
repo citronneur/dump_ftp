@@ -158,7 +158,7 @@ class Dumper(object):
                 except error_perm:
                     print "\nERROR : unable to access directory %s\n"%(os.path.join(self.client.pwd(), name))
             else:
-                if re.match(name, self.filter) is None:
+                if re.match(self.filter, name) is None:
                     continue
                 
                 targetFile = os.path.join(targetDir, name)
@@ -205,7 +205,7 @@ if __name__ == '__main__':
     targetDir = '/tmp'
     
     #filter on file name
-    filter = "*"
+    filter = ".*"
     
     #compute sha of list command and comprae to already visited folders
     detectLink = False
