@@ -21,7 +21,7 @@
 Dump ftp directory
 """
 
-import sys, os, getopt, ssl, socket, re, errno, sha, fnmatch, shutil
+import sys, os, getopt, ssl, socket, re, errno, sha, shutil
 from ftplib import FTP, FTP_TLS, error_perm
 
 class FTP_TLS_EXPLICIT(FTP_TLS):
@@ -158,7 +158,7 @@ class Dumper(object):
                 except error_perm:
                     print "\nERROR : unable to access directory %s\n"%(os.path.join(self.client.pwd(), name))
             else:
-                if not fnmatch.fnmatch(name, self.filter):
+                if re.match(name, self.filter) is None:
                     continue
                 
                 targetFile = os.path.join(targetDir, name)
